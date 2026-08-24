@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BrowserView, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, dialog, desktopCapturer } = require('electron');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
@@ -113,9 +113,27 @@ function startAutomationServer() {
             return;
         }
 
-        // GET /api/screenshot — Capture real-time visual PNG screenshot of LOVI
+        // GET /api/screenshot — Capture real-time visual PNG screenshot of LOVI (Composited Window + BrowserView)
         if (req.method === 'GET' && url.pathname === '/api/screenshot') {
             if (mainWindow && !mainWindow.isDestroyed()) {
+                try {
+                    const bounds = mainWindow.getBounds();
+                    const sources = await desktopCapturer.getSources({
+                        types: ['window'],
+                        thumbnailSize: { width: Math.max(bounds.width, 1280), height: Math.max(bounds.height, 800) }
+                    });
+                    const targetSource = sources.find(s => s.id === mainWindow.getMediaSourceId()) ||
+                                         sources.find(s => s.name.toLowerCase().includes('lovi') || s.name.toLowerCase().includes('tab') || s.name.toLowerCase().includes('wikipedia'));
+                    
+                    if (targetSource && targetSource.thumbnail) {
+                        const pngBuffer = targetSource.thumbnail.toPNG();
+                        res.writeHead(200, { 'Content-Type': 'image/png' });
+                        return res.end(pngBuffer);
+                    }
+                } catch (err) {
+                    console.error('[Screenshot Error]', err);
+                }
+
                 const image = await mainWindow.webContents.capturePage();
                 const pngBuffer = image.toPNG();
                 res.writeHead(200, { 'Content-Type': 'image/png' });

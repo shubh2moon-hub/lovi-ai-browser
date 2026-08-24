@@ -10,7 +10,13 @@
 
 ---
 
-![LOVI AI Browser Screenshot](assets/screenshot.png)
+## 📸 Screenshots
+
+| 🤖 Autonomous Web Navigation & Live AI Conversation | 🏠 New Tab & AI Side Panel |
+| :---: | :---: |
+| ![Autonomous Web Navigation & Live AI Conversation](assets/conversation_screenshot.png) | ![New Tab & AI Side Panel](assets/screenshot.png) |
+
+---
 
 ## 🌟 Overview
 
