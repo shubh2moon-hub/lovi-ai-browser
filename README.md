@@ -10,6 +10,8 @@
 
 ---
 
+![LOVI AI Browser Screenshot](assets/screenshot.png)
+
 ## 🌟 Overview
 
 **LOVI** is an autonomous AI browser assistant built on Electron that operates **100% locally** on your machine. Powered by `node-llama-cpp` and the quantized **Qwen 2.5 1.5B Instruct** model, LOVI acts as an intelligent companion that can converse naturally, navigate the web autonomously, search dynamically via DuckDuckGo, auto-summarize web pages, queue YouTube music playlists, and expose real-time automation hooks over HTTP and Chrome DevTools Protocol.
