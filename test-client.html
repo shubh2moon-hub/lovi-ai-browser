@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; background: #1e1e1e; color: #fff; padding: 20px; }
+        input { padding: 10px; width: 400px; font-size: 16px; border-radius: 4px; border: 1px solid #444; background: #333; color: white; }
+        button { padding: 10px 20px; font-size: 16px; border-radius: 4px; border: none; background: #007acc; color: white; cursor: pointer; margin-left: 10px; }
+        button:hover { background: #0098ff; }
+        #output { background: #000; padding: 15px; border-radius: 8px; color: #0f0; white-space: pre-wrap; font-family: monospace; height: 150px; overflow-y: auto;}
+    </style>
+</head>
+<body>
+    <h2>🤖 LOVI External Testing Harness</h2>
+    <div>
+        <input type="text" id="promptInput" value="Take me to wikipedia to read about Quantum Computing">
+        <button id="sendBtn">Send Prompt to LOVI</button>
+    </div>
+    <br>
+    
+    <div>
+        <h3>📡 Live JSON State (/api/state):</h3>
+        <pre id="output">Waiting for state...</pre>
+    </div>
+
+    <div>
+        <h3>📸 Live Visual Feed (/api/screenshot):</h3>
+        <img id="screenshot" src="" style="max-width: 800px; border-radius: 8px; border: 2px solid #555;"/>
+    </div>
+
+    <script>
+        const btn = document.getElementById('sendBtn');
+        const input = document.getElementById('promptInput');
+        const output = document.getElementById('output');
+        const screenshot = document.getElementById('screenshot');
+
+        btn.addEventListener('click', async () => {
+            btn.innerText = 'Sending...';
+            output.innerText = 'Sending command to LOVI via automation bridge...';
+            try {
+                await fetch('http://127.0.0.1:9223/api/prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: input.value })
+                });
+            } catch(e) {
+                output.innerText = 'Error: ' + e.message;
+            }
+            setTimeout(() => { btn.innerText = 'Send Prompt to LOVI'; }, 1000);
+        });
+
+        // Poll API every 3 seconds
+        setInterval(async () => {
+            try {
+                const res = await fetch('http://127.0.0.1:9223/api/state');
+                const data = await res.json();
+                output.innerText = JSON.stringify(data, null, 2);
+                screenshot.src = 'http://127.0.0.1:9223/api/screenshot?time=' + Date.now();
+            } catch(e) {
+                output.innerText = 'LOVI Offline: ' + e.message;
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

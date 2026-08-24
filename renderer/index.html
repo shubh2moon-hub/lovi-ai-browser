@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Browser</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- ── Combined Title + Tab Bar (Chrome-style) ──────── -->
+    <div id="titlebar">
+        <img src="assets/logo.png" alt="Logo" class="titlebar-logo">
+        <div id="tabs-container">
+            <button id="btn-new-tab" class="tab-action" title="New Tab">+</button>
+        </div>
+    </div>
+
+    <!-- ── Navigation Bar ─────────────────────────────── -->
+    <div id="nav-bar">
+        <button id="btn-back" class="nav-btn" title="Back">←</button>
+        <button id="btn-forward" class="nav-btn" title="Forward">→</button>
+        <button id="btn-reload" class="nav-btn" title="Reload">↻</button>
+        <button id="btn-open-pdf" class="nav-btn" title="Open PDF file" style="font-size:13px; width:38px;">📄</button>
+        <div id="url-container">
+            <input type="text" id="url-input" placeholder="Enter URL or search..." spellcheck="false"
+                autocomplete="off">
+            <div id="loading-indicator"></div>
+        </div>
+        <button id="btn-ai-toggle" class="ai-toggle-btn" title="LOVI AI Assistant">
+            <span class="ai-sparkle">✦</span> LOVI AI
+        </button>
+    </div>
+
+    <!-- ── AI Side Panel ──────────────────────────────── -->
+    <div id="ai-panel" class="hidden">
+        <div class="ai-panel-header">
+            <div class="ai-header-title">
+                <span class="ai-header-sparkle">✦</span>
+                <span>LOVI AI</span>
+            </div>
+            <div class="ai-status-container">
+                <span id="ai-status-dot" class="status-dot idle"></span>
+                <span id="ai-status-text" class="status-label">Idle</span>
+            </div>
+            <button id="btn-ai-close" class="ai-close-btn" title="Close Panel">✕</button>
+        </div>
+
+        <!-- Download / Loading Progress Bar -->
+        <div id="ai-progress-box" class="hidden">
+            <div class="progress-info">
+                <span id="progress-message">Downloading Qwen 2.5 1.5B model...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar-track">
+                <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- Quick Actions Bar -->
+        <div class="ai-quick-actions">
+            <button id="qa-summarize" class="qa-pill" title="Summarize current webpage">
+                📝 Summarize
+            </button>
+            <button id="qa-explain" class="qa-pill" title="Explain selected text">
+                💡 Explain Selection
+            </button>
+            <button id="qa-ask" class="qa-pill" title="Ask a question about this page">
+                ❓ Ask Page
+            </button>
+        </div>
+
+        <!-- Messages Chat Area -->
+        <div id="ai-messages" class="ai-messages-container">
+            <div class="ai-welcome-card">
+                <div class="welcome-icon">✦</div>
+                <h3>Welcome to LOVI</h3>
+                <p>Your ambient browser AI assistant powered by Qwen 2.5 1.5B (running 100% locally on your PC).</p>
+                <p class="welcome-tip">Tip: Click <strong>Summarize</strong> or select text on any webpage to begin!</p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="ai-input-container">
+            <textarea id="ai-input" placeholder="Ask about this page or type a command..." rows="1"
+                spellcheck="false"></textarea>
+            <div class="ai-input-actions">
+                <button id="ai-stop-btn" class="ai-icon-action hidden" title="Stop generating">⏹</button>
+                <button id="ai-send-btn" class="ai-icon-action" title="Send message">↑</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Native Home Page ────────────────────────────── -->
+    <div id="home-page" class="hidden">
+        <!-- Background Image Layer -->
+        <div id="backdrop"></div>
+        <!-- Dark overlay for readability -->
+        <div id="overlay"></div>
+
+        <div class="home-container">
+            <!-- Clock / Greeting -->
+            <div class="header">
+                <h1 id="clock">00:00</h1>
+                <p id="greeting">Good evening</p>
+            </div>
+
+            <!-- Search Bar area -->
+            <div class="home-search-container">
+                <div class="home-search-box">
+                    <div class="search-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2"
+                            fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                    <input type="text" id="home-url-input" placeholder="Search the web or enter a URL"
+                        autocomplete="off" spellcheck="false">
+                    <button id="home-go-btn" class="glass-btn">→</button>
+                </div>
+            </div>
+
+            <!-- Quick Links Grid -->
+            <div class="quick-links">
+                <div class="shortcut" data-url="https://github.com">
+                    <div class="icon-circle"><img src="https://github.githubassets.com/favicons/favicon.svg"
+                            alt="GitHub"></div>
+                    <span>GitHub</span>
+                </div>
+                <div class="shortcut" data-url="https://youtube.com">
+                    <div class="icon-circle"><img src="https://www.youtube.com/favicon.ico" alt="YouTube"></div>
+                    <span>YouTube</span>
+                </div>
+                <div class="shortcut" data-url="https://google.com">
+                    <div class="icon-circle"><img src="https://www.google.com/favicon.ico" alt="Google"></div>
+                    <span>Google</span>
+                </div>
+                <div class="shortcut" data-url="https://wikipedia.org">
+                    <div class="icon-circle">W</div>
+                    <span>Wikipedia</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+    <script src="renderer-ai.js"></script>
+</body>
+
+</html>

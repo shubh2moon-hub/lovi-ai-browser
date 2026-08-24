@@ -1,0 +1,35 @@
+{
+  "name": "lovi-ai-browser",
+  "version": "1.0.0",
+  "description": "Autonomous, privacy-first AI companion browser powered by Qwen 2.5 local LLM, Chrome DevTools Protocol & real-time HTTP automation API.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node start.js",
+    "test:e2e": "node test-api-e2e.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shubh2moon-hub/lovi-ai-browser.git"
+  },
+  "keywords": [
+    "ai-browser",
+    "local-ai",
+    "qwen2.5",
+    "node-llama-cpp",
+    "browser-automation",
+    "chrome-devtools-protocol",
+    "privacy-first",
+    "electron",
+    "ai-agent",
+    "autonomous-browser"
+  ],
+  "author": "shubh2moon-hub",
+  "license": "MIT",
+  "dependencies": {
+    "node-llama-cpp": "^3.20.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "electron": "^40.6.1"
+  }
+}

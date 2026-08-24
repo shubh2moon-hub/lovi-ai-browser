@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Local GGUF Model weights (auto-downloaded at runtime by node-llama-cpp)
+models/*.gguf
+models/*.bin
+
+# Logs & build outputs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor files
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.local
