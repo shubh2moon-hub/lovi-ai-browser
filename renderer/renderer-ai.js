@@ -295,22 +295,6 @@ const api = window.browser || {
         aiInput.focus();
     });
 
-    if (api.onAiAskTest) {
-        api.onAiAskTest((text) => {
-            if (!isPanelOpen) togglePanel(true);
-            if (isGenerating) {
-                api.aiStop();
-                if (currentAiBubble) {
-                    currentAiBubble.classList.remove('streaming');
-                    currentAiBubble = null;
-                }
-                setGeneratingState(false);
-            }
-            aiInput.value = text;
-            handleSend();
-        });
-    }
-
     if (api.onToggleAiPanel) {
         api.onToggleAiPanel((open) => {
             togglePanel(open);
@@ -342,8 +326,7 @@ const api = window.browser || {
         scrollToBottom();
     }
 
-    // Intercept completed AI responses to detect nudge action tags
-    const _origOnAiDone = api.onAiDone.bind(api);
+    // Process completed AI responses for nudge action tags
     function processNudgesInResponse(finalText) {
         if (!finalText) return;
 

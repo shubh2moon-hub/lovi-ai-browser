@@ -241,22 +241,14 @@ body {
 }
 
 #loading-indicator.loading {
-    width: 60%;
-    animation: loading-pulse 1.5s ease-in-out infinite;
+    animation: loading-fill 1.8s cubic-bezier(0.1, 0.4, 0.6, 1) forwards;
 }
 
-@keyframes loading-pulse {
-
-    0%,
-    100% {
-        width: 30%;
-        opacity: 0.5;
-    }
-
-    50% {
-        width: 70%;
-        opacity: 1;
-    }
+@keyframes loading-fill {
+    0%   { width: 0%;  opacity: 1; }
+    60%  { width: 75%; opacity: 1; }
+    90%  { width: 88%; opacity: 1; }
+    100% { width: 92%; opacity: 1; }
 }
 
 /* ── Icon Button ───────────────────────────────────── */

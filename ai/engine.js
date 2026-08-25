@@ -90,19 +90,34 @@ class AIEngine {
             this._setStatus('loading');
             const { getLlama } = await import('node-llama-cpp');
 
-            this.llama = await getLlama();
-            this.model = await this.llama.loadModel({
-                modelPath: this.modelPath,
-            });
+            // Try GPU first; fall back to CPU-only if Vulkan/VRAM allocation fails
+            try {
+                this.llama = await getLlama();
+                this.model = await this.llama.loadModel({
+                    modelPath: this.modelPath,
+                });
+                console.log('[AIEngine] Loaded on GPU.');
+            } catch (gpuErr) {
+                if (gpuErr.message && (gpuErr.message.includes('Failed to load model') || gpuErr.message.includes('Vulkan'))) {
+                    console.warn('[AIEngine] GPU failed, retrying with CPU-only inference...');
+                    this.llama = await getLlama({ gpu: false });
+                    this.model = await this.llama.loadModel({
+                        modelPath: this.modelPath,
+                    });
+                    console.log('[AIEngine] Loaded on CPU (GPU unavailable).');
+                } else {
+                    throw gpuErr;
+                }
+            }
 
             this.context = await this.model.createContext({
-                contextSize: 4096, // 4k context window
+                contextSize: 2048, // Conservative size to fit in CPU RAM
             });
 
             this.sequence = this.context.getSequence();
 
             this._setStatus('ready');
-            console.log('[AIEngine] Qwen 2.5 1.5B loaded successfully');
+            console.log('[AIEngine] Model loaded successfully.');
         } catch (err) {
             console.error('[AIEngine] Initialization error:', err);
             this._setStatus('error', { error: `Model loading failed: ${err.message}` });

@@ -39,9 +39,14 @@ const backdrop = document.getElementById('backdrop');
 
 // ── Initialization ─────────────────────────────────────
 function initHomePage() {
-    // Dynamic background
-    const randomSeed = Math.floor(Math.random() * 1000);
-    backdrop.style.backgroundImage = `url('https://picsum.photos/seed/${randomSeed}/1920/1080?blur=2')`;
+    // Wallpaper — fetch once per session, cache in sessionStorage
+    let wallpaperUrl = sessionStorage.getItem('lovi_wallpaper');
+    if (!wallpaperUrl) {
+        const randomSeed = Math.floor(Math.random() * 1000);
+        wallpaperUrl = `https://picsum.photos/seed/${randomSeed}/1920/1080?blur=2`;
+        sessionStorage.setItem('lovi_wallpaper', wallpaperUrl);
+    }
+    backdrop.style.backgroundImage = `url('${wallpaperUrl}')`;
 
     // Clock
     function updateClock() {
@@ -60,7 +65,8 @@ function initHomePage() {
         clockEl.textContent = `${hours}:${minutes}`;
     }
 
-    setInterval(updateClock, 1000);
+    // Clock — only HH:MM shown, no need to tick every second
+    setInterval(updateClock, 30000);
     updateClock();
 
     // Search logic

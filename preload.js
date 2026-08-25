@@ -46,9 +46,7 @@ contextBridge.exposeInMainWorld('browser', {
   onAiDone: (cb) => ipcRenderer.on('ai-done', (_e, data) => cb(data)),
   onAiStatus: (cb) => ipcRenderer.on('ai-status', (_e, data) => cb(data)),
   onAiError: (cb) => ipcRenderer.on('ai-error', (_e, data) => cb(data)),
-  onAiAskTest: (cb) => ipcRenderer.on('ai-ask-test', (_e, text) => cb(text)),
   onToggleAiPanel: (cb) => ipcRenderer.on('toggle-ai-panel', (_e, open) => cb(open)),
-  notifyTestStepDone: (stepName) => ipcRenderer.send('test-step-done', stepName),
 
   // ── Cowork Filesystem ───────────────────────────────
   coworkSetFolder: () => ipcRenderer.invoke('cowork-set-folder'),

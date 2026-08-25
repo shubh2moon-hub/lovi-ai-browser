@@ -127,12 +127,6 @@ const result = await response.json();
 console.log(result);
 ```
 
-Or run the built-in verification suite:
-
-```bash
-npm run test:e2e
-```
-
 ---
 
 ## 🛠️ Project Structure
@@ -150,8 +144,6 @@ lovi-ai-browser/
 ├── preload.js             # Electron preload context isolation bridge
 ├── view-preload.js        # Webview DOM extraction preload script
 ├── start.js               # Application launcher
-├── test-api-e2e.js        # E2E HTTP API verification harness
-├── test-client.html       # Visual automation test client
 └── package.json           # Dependencies & build scripts
 ```
 

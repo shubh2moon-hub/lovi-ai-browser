@@ -4,8 +4,7 @@
   "description": "Autonomous, privacy-first AI companion browser powered by dual Qwen 2.5 local LLMs (0.5B Intent Router + 1.5B Chat), Chrome DevTools Protocol & real-time WebSocket API.",
   "main": "main.js",
   "scripts": {
-    "start": "node start.js",
-    "test:e2e": "node test-api-e2e.js"
+    "start": "node start.js"
   },
   "repository": {
     "type": "git",

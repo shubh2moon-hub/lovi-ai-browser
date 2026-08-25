@@ -474,6 +474,15 @@ function startAutomationServer() {
         res.end(JSON.stringify({ error: 'Endpoint not found' }));
     });
 
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.warn('[LOVI] Port 9223 already in use. Kill stale Electron processes first.');
+            console.warn('[LOVI] API server skipped. Restart with --dev after cleaning up.');
+        } else {
+            console.error('[LOVI] Automation server error:', err.message);
+        }
+    });
+
     server.listen(9223, '127.0.0.1', () => {
         console.log('[LOVI Automation Bridge] Listening on http://127.0.0.1:9223');
         console.log('[LOVI Chrome DevTools Protocol] Available on http://127.0.0.1:9222');
@@ -492,9 +501,22 @@ function startAutomationServer() {
                     mainWindow.webContents.send('toggle-ai-panel', true);
                     resizeBrowserView();
                 }
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('ai-ask-test', promptText);
-                }
+                const msgs = tasks.getComposeMessages(promptText);
+                let fullResult = '';
+                aiEngine.generate(msgs, (chunk) => {
+                    fullResult += chunk;
+                    bus.broadcast('ai:chunk', chunk);
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('ai-chunk', chunk);
+                    }
+                }).then(() => {
+                    bus.broadcast('ai:done', fullResult);
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('ai-done', fullResult);
+                    }
+                }).catch(err => {
+                    bus.broadcast('ai:error', err.message);
+                });
                 return { action: 'prompt', prompt: promptText };
             }
             return { action: 'unknown' };
@@ -504,13 +526,24 @@ function startAutomationServer() {
 
 // ── App Ready ────────────────────────────────────────
 
+const IS_DEV = process.argv.includes('--dev');
+
 app.whenReady().then(() => {
-    startAutomationServer();
-    // Initialize AI Engine
-    const userDataPath = app.getPath('userData');
-    aiEngine = new AIEngine(path.join(userDataPath, 'models'));
-    intentEngine = new AIEngine(path.join(userDataPath, 'models'), { repo: 'bartowski/Qwen2.5-0.5B-Instruct-GGUF', file: 'Qwen2.5-0.5B-Instruct-Q4_K_M.gguf' });
-    intentEngine.init().catch(e => console.error('[IntentRouter] Init failed:', e.message));
+    // ── Automation API: only active in developer mode (--dev flag) ───────
+    if (IS_DEV) {
+        startAutomationServer();
+        console.log('[LOVI] Developer mode active. HTTP/WS Automation API started.');
+    } else {
+        console.log('[LOVI] Production mode. Run with --dev to enable Automation API.');
+    }
+
+    // ── Initialize AI Engines (stores models locally in ./models directory) ──
+    // aiEngine: lazy-loaded on first user AI interaction
+    // intentEngine: lazy-loaded on first smart navigation
+    const localModelsDir = path.join(__dirname, 'models');
+    aiEngine = new AIEngine(localModelsDir);
+    intentEngine = new AIEngine(localModelsDir, { repo: 'bartowski/Qwen2.5-0.5B-Instruct-GGUF', file: 'Qwen2.5-0.5B-Instruct-Q4_K_M.gguf' });
+    // Both engines are initialized lazily on first use — no eager model load at startup
 
     aiEngine.onStatusChange((statusData) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -523,19 +556,16 @@ app.whenReady().then(() => {
     mainWindow.webContents.on('did-finish-load', () => {
         createTab(HOME_URL);
 
-        // ── Initialize Scheduler (needs AI engine) ─────────────────────
+        // ── Initialize Scheduler (guard against double-init on reload) ──
+        if (scheduler) scheduler.stopAll();
         scheduler = new Scheduler(async (prompt, taskId) => {
             console.log(`[Scheduler] Running task ${taskId}: "${prompt.slice(0, 60)}..."`);
-            const msgs = tasks.getChatMessages(prompt, [], '');
+            const msgs = tasks.getComposeMessages(prompt);
             let result = '';
             await aiEngine.generateStream(msgs, (token) => { result += token; });
             return result;
         });
         scheduler.startAll();
-
-        if (process.argv.includes('--test-live')) {
-            runLiveGuiTest();
-        }
     });
 });
 
@@ -611,112 +641,6 @@ ipcMain.handle('llm-set-config', async (event, newConfig) => {
     });
     return { success: ok, config: apiEngine.getConfig() };
 });
-
-let testStepCount = 0;
-
-function runLiveGuiTest() {
-    console.log('\n==========================================================================');
-    console.log('=== 🎬 LOVI ELABORATE 5-TURN LIVE CONVERSATION TEST ===');
-    console.log('=== Turns: Intro → Wiki Nav → Auto-Summary → Music → Tab Context → Close ===');
-    console.log('==========================================================================\n');
-
-    const failTimeout = setTimeout(() => {
-        console.error('\n❌ ELABORATE TEST FAILED: Timed out before completion.');
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-        app.quit();
-        process.exit(1);
-    }, 300000); // 5 min timeout for 5 turns
-
-    // 1. Open AI Side Panel
-    setTimeout(() => {
-        isAiPanelOpen = true;
-        mainWindow.webContents.send('toggle-ai-panel', true);
-        resizeBrowserView();
-    }, 1500);
-
-    // TURN 1: Casual conversational opener — establish warmth/personality
-    setTimeout(() => {
-        testStepCount = 1;
-        console.log('[Turn 1/5] 💬 User: "Hey LOVI! What do you know about Christopher Nolan? I heard he is making a new film."');
-        mainWindow.webContents.send('ai-ask-test', "Hey LOVI! What do you know about Christopher Nolan? I heard he is making a new film.");
-    }, 4000);
-
-    ipcMain.on('test-step-done', async (_e, aiOutputText) => {
-        if (testStepCount === 1) {
-            testStepCount = 2;
-            console.log(`\n[LOVI Response 1 — Intro/Conversation]:\n${aiOutputText}\n`);
-            console.log(' → Turn 1 ✅ Verified warm conversational tone!');
-
-            // TURN 2: Navigate to Wikipedia to read about Nolan
-            setTimeout(() => {
-                console.log('\n[Turn 2/5] 🌐 User: "Take me to wikipedia to read about him!"');
-                mainWindow.webContents.send('ai-ask-test', 'Take me to wikipedia to read about him!');
-            }, 7000);
-
-        } else if (testStepCount === 2) {
-            testStepCount = 2.5;
-            console.log(`\n[LOVI Response 2a — Wikipedia Navigation]:\n${aiOutputText}\n`);
-            console.log(' → Turn 2 part A ✅ Navigation command fired! Waiting for auto-summarize...');
-
-        } else if (testStepCount === 2.5) {
-            testStepCount = 3;
-            console.log(`\n[LOVI Auto-Summary 2b — Page Summary]:\n${aiOutputText}\n`);
-            console.log(' → Turn 2 part B ✅ Auto-Summary generated from Christopher Nolan Wikipedia!');
-
-            // TURN 3: Ask to play music in a new tab
-            setTimeout(() => {
-                console.log('\n[Turn 3/5] 🎵 User: "That\'s amazing! Open a new tab and play the Interstellar soundtrack for me"');
-                mainWindow.webContents.send('ai-ask-test', "That's amazing! Open a new tab and play the Interstellar soundtrack for me");
-            }, 7000);
-
-        } else if (testStepCount === 3) {
-            testStepCount = 3.5;
-            console.log(`\n[LOVI Response 3a — New Tab + Music]:\n${aiOutputText}\n`);
-            console.log(` → Turn 3 part A ✅ New tab created + music queued. Tabs open: ${tabs.length}`);
-
-        } else if (testStepCount === 3.5) {
-            testStepCount = 4;
-            console.log(`\n[LOVI Auto-Summary 3b — YouTube Page]:\n${aiOutputText}\n`);
-            console.log(` → Turn 3 part B ✅ YouTube page summarized. Tabs open: ${tabs.length}`);
-
-            // TURN 4: Tab memory awareness — ask about tabs
-            setTimeout(() => {
-                console.log('\n[Turn 4/5] 📋 User: "Hey LOVI, what tabs do I currently have open?"');
-                mainWindow.webContents.send('ai-ask-test', 'Hey LOVI, what tabs do I currently have open?');
-            }, 7000);
-
-        } else if (testStepCount === 4) {
-            testStepCount = 5;
-            console.log(`\n[LOVI Response 4 — Tab Awareness]:\n${aiOutputText}\n`);
-            console.log(` → Turn 4 ✅ Tab Memory verified. LOVI correctly identified all ${tabs.length} open tabs!`);
-
-            // TURN 5: Close the YouTube tab
-            setTimeout(() => {
-                console.log('\n[Turn 5/5] ❌ User: "Thanks! Close tab 2 please, I\'ll keep reading about Nolan"');
-                mainWindow.webContents.send('ai-ask-test', "Thanks! Close tab 2 please, I'll keep reading about Nolan");
-            }, 7000);
-
-        } else if (testStepCount === 5) {
-            testStepCount = 6;
-            console.log(`\n[LOVI Response 5 — Tab Closure]:\n${aiOutputText}\n`);
-            console.log(` → Turn 5 ✅ Close tab command executed. Remaining tabs: ${tabs.length}`);
-
-            clearTimeout(failTimeout);
-
-            console.log('\n==========================================================================');
-            console.log('=== ✅ ALL 5 TURNS COMPLETED SUCCESSFULLY! ===');
-            console.log(`=== Final Tabs Count: ${tabs.length} (expected: 1) ===`);
-            console.log('=== Conversation: Casual → Wiki Nav → Auto-Summary → Music+NewTab → Tab Context → Close ===');
-            console.log('==========================================================================\n');
-
-            setTimeout(() => {
-                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-                app.quit();
-                process.exit(0);
-            }, 10000);
-        }
-    });
-}
 
 // Globally intercept file:// PDF navigation
 app.on('web-contents-created', (_event, contents) => {
@@ -845,13 +769,21 @@ function createTab(url = HOME_URL) {
         bus.broadcast('tab:title', { tabId: tab.id, title });
     });
 
+    let loadingDebounceTimer = null;
     view.webContents.on('did-start-loading', () => {
-        mainWindow.webContents.send('loading-state-changed', { loading: true });
-        bus.broadcast('tab:loading', { tabId: tab.id, loading: true });
+        // Debounce: ignore rapid sub-resource/iframe loads that fire after main load
+        clearTimeout(loadingDebounceTimer);
+        loadingDebounceTimer = setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed())
+                mainWindow.webContents.send('loading-state-changed', { loading: true });
+            bus.broadcast('tab:loading', { tabId: tab.id, loading: true });
+        }, 80);
     });
 
     view.webContents.on('did-finish-load', () => {
-        mainWindow.webContents.send('loading-state-changed', { loading: false });
+        clearTimeout(loadingDebounceTimer);
+        if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send('loading-state-changed', { loading: false });
         bus.broadcast('tab:loading', { tabId: tab.id, loading: false, url: view.webContents.getURL() });
         const currentUrl = view.webContents.getURL();
         if (currentUrl.includes('youtube.com/results?search_query=')) {
@@ -1220,7 +1152,6 @@ ipcMain.on('ai-ask', async (_e, question) => {
                 mainWindow.webContents.send('ai-status', `Generating response...`);
             }
             aiFullResponse = await aiEngine.generate(messages, (chunk) => {
-                process.stdout.write(chunk); // Debug log exactly what it generates
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('ai-chunk', chunk);
                 }
