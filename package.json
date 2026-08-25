@@ -1,7 +1,7 @@
 {
   "name": "lovi-ai-browser",
-  "version": "1.0.0",
-  "description": "Autonomous, privacy-first AI companion browser powered by Qwen 2.5 local LLM, Chrome DevTools Protocol & real-time HTTP automation API.",
+  "version": "2.0.0",
+  "description": "Autonomous, privacy-first AI companion browser powered by dual Qwen 2.5 local LLMs (0.5B Intent Router + 1.5B Chat), Chrome DevTools Protocol & real-time WebSocket API.",
   "main": "main.js",
   "scripts": {
     "start": "node start.js",
@@ -27,7 +27,8 @@
   "license": "MIT",
   "dependencies": {
     "node-llama-cpp": "^3.20.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "electron": "^40.6.1"

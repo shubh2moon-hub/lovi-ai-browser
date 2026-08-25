@@ -1,0 +1,20 @@
+{
+  "id": "snap_1787637102737",
+  "name": "Live Test Checkpoint",
+  "savedAt": "2026-08-25T05:51:42.737Z",
+  "state": {
+    "tabs": [
+      {
+        "id": "f7da4bc1-3a7e-4e7b-80ec-24cfed185fe8",
+        "view": {},
+        "url": "app://newtab",
+        "title": "New Tab",
+        "lastSummarizedUrl": null
+      }
+    ],
+    "activeTabId": "f7da4bc1-3a7e-4e7b-80ec-24cfed185fe8",
+    "chatHistory": [],
+    "plannerSteps": [],
+    "loopHistory": []
+  }
+}

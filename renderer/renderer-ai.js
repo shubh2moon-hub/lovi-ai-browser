@@ -316,4 +316,100 @@ const api = window.browser || {
             togglePanel(open);
         });
     }
+
+    // ── Smart Nudges — Inline Action Cards ─────────────────
+    // These parse action tags from the AI response and render interactive cards.
+
+    function appendNudgeCard({ icon, title, description, confirmLabel, onConfirm, cancelLabel }) {
+        const card = document.createElement('div');
+        card.className = 'nudge-card';
+        card.innerHTML = `
+            <div class="nudge-icon">${icon}</div>
+            <div class="nudge-body">
+                <div class="nudge-title">${title}</div>
+                <div class="nudge-desc">${description}</div>
+                <div class="nudge-actions">
+                    <button class="nudge-btn confirm">${confirmLabel || 'Enable'}</button>
+                    <button class="nudge-btn cancel">${cancelLabel || 'Not now'}</button>
+                </div>
+            </div>`;
+        card.querySelector('.nudge-btn.confirm').addEventListener('click', () => {
+            onConfirm();
+            card.remove();
+        });
+        card.querySelector('.nudge-btn.cancel').addEventListener('click', () => card.remove());
+        aiMessages.appendChild(card);
+        scrollToBottom();
+    }
+
+    // Intercept completed AI responses to detect nudge action tags
+    const _origOnAiDone = api.onAiDone.bind(api);
+    function processNudgesInResponse(finalText) {
+        if (!finalText) return;
+
+        // [SUGGEST_COWORK] — Cowork folder nudge
+        if (finalText.includes('[SUGGEST_COWORK]')) {
+            appendNudgeCard({
+                icon: '📂',
+                title: 'Enable Cowork Mode',
+                description: 'Grant LOVI access to a local folder so I can save notes, reports, and files for you.',
+                confirmLabel: 'Choose Folder',
+                onConfirm: async () => {
+                    const res = await api.coworkSetFolder();
+                    if (res && res.success) {
+                        appendSystemMessage(`✅ Cowork active: ${res.folder}`);
+                    }
+                }
+            });
+        }
+
+        // [SUGGEST_SCHEDULE prompt="..." interval="daily"]
+        const schedMatch = finalText.match(/\[SUGGEST_SCHEDULE prompt="([^"]+)" interval="([^"]+)"\]/);
+        if (schedMatch) {
+            const [, prompt, interval] = schedMatch;
+            appendNudgeCard({
+                icon: '⏰',
+                title: 'Schedule This Task',
+                description: `Run "${prompt.slice(0, 60)}..." automatically (${interval}).`,
+                confirmLabel: 'Schedule It',
+                onConfirm: async () => {
+                    const typeMap = { daily: 'daily', hourly: 'hourly', weekly: 'daily' };
+                    const res = await api.scheduleAdd({ name: prompt.slice(0, 40), prompt, type: typeMap[interval] || 'daily', interval: 60 });
+                    if (res && res.success) {
+                        appendSystemMessage(`✅ Scheduled: "${res.schedule.name}" (${interval})`);
+                    }
+                }
+            });
+        }
+
+        // [WRITE_FILE path="..." content="..."] — Execute cowork file write
+        const writeMatch = finalText.match(/\[WRITE_FILE path="([^"]+)" content="([^"]*)"\]/);
+        if (writeMatch && api.coworkWriteFile) {
+            const [, filePath, content] = writeMatch;
+            api.coworkWriteFile(filePath, content).then(res => {
+                if (res && res.success) appendSystemMessage(`✅ File saved: ${filePath}`);
+                else appendSystemMessage(`⚠️ Could not write file: ${res?.error || 'No cowork folder set'}`, 'error');
+            });
+        }
+
+        // [READ_FILE path="..."] — Execute cowork file read and inject into context
+        const readMatch = finalText.match(/\[READ_FILE path="([^"]+)"\]/);
+        if (readMatch && api.coworkReadFile) {
+            const [, filePath] = readMatch;
+            api.coworkReadFile(filePath).then(res => {
+                if (res && res.success) {
+                    appendSystemMessage(`📄 File contents loaded from: ${filePath}`);
+                    api.aiAsk(`Here are the file contents of "${filePath}" you requested:\n\n${res.content}`);
+                } else {
+                    appendSystemMessage(`⚠️ Could not read file: ${res?.error || 'No cowork folder set'}`, 'error');
+                }
+            });
+        }
+    }
+
+    // Patch onAiDone to also run nudge processing
+    api.onAiDone((finalText) => {
+        processNudgesInResponse(finalText || currentRawText);
+    });
+
 })();

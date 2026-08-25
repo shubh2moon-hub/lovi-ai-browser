@@ -281,6 +281,127 @@ body {
     color: var(--text-primary);
 }
 
+/* ── Browser Dropdown Menu ─────────────────────────── */
+#browser-menu {
+    position: absolute;
+    top: 38px;
+    right: 8px;
+    width: 250px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    padding: 6px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#browser-menu.hidden {
+    display: none !important;
+}
+
+.menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: background var(--transition);
+}
+
+.menu-item:hover {
+    background: var(--bg-hover);
+}
+
+.menu-item .shortcut {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0;
+}
+
+/* ── Smart Nudge Cards ─────────────────────────────── */
+.nudge-card {
+    display: flex;
+    gap: 10px;
+    background: rgba(140, 90, 255, 0.08);
+    border: 1px solid rgba(160, 110, 255, 0.3);
+    border-radius: 10px;
+    padding: 12px 14px;
+    animation: fadeIn 0.25s ease-out;
+}
+
+.nudge-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.nudge-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.nudge-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #e0d5ff;
+}
+
+.nudge-desc {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.nudge-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.nudge-btn {
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nudge-btn.confirm {
+    background: linear-gradient(135deg, rgba(140, 90, 255, 0.5), rgba(70, 150, 255, 0.5));
+    color: #fff;
+    border: 1px solid rgba(160, 120, 255, 0.5);
+}
+
+.nudge-btn.confirm:hover {
+    background: linear-gradient(135deg, rgba(160, 110, 255, 0.7), rgba(90, 170, 255, 0.7));
+    box-shadow: 0 0 8px rgba(140, 90, 255, 0.4);
+}
+
+.nudge-btn.cancel {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nudge-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
 /* ── Utilities ─────────────────────────────────────── */
 .hidden {
     display: none !important;

@@ -4,10 +4,36 @@ const { v4: uuidv4 } = require('uuid');
 
 const AIEngine = require('./ai/engine');
 const tasks = require('./ai/tasks');
+const UserMemory = require('./ai/userMemory');
+const LoopDetector = require('./ai/loopDetector');
+const PlannerAgent = require('./ai/planner');
+const domDistiller = require('./ai/domDistiller');
+const Scheduler = require('./ai/scheduler');
+const APIEngine = require('./ai/apiEngine');
+const Cowork = require('./ai/cowork');
+const MessageBus = require('./ai/messageBus');
+const SnapshotEngine = require('./ai/snapshot');
+const LockManager = require('./ai/lockManager');
+const SwarmOrchestrator = require('./ai/swarm');
+
+// ── Agent-E Core Instances ───────────────────────────
+const userMemory = new UserMemory();
+const loopDetector = new LoopDetector();
+const plannerAgent = new PlannerAgent();
+const cowork = new Cowork();
+const apiEngine = new APIEngine();
+const bus = new MessageBus();
+const snapshots = new SnapshotEngine();
+const lockManager = new LockManager();
+const swarm = new SwarmOrchestrator();
+
+// Scheduler is initialized lazily after app ready (needs the AI engine reference)
+let scheduler = null;
 
 // ── State ────────────────────────────────────────────
 let mainWindow = null;
 let aiEngine = null;
+let intentEngine = null;
 
 const HOME_URL = 'app://newtab';
 let tabs = [];
@@ -16,13 +42,14 @@ const TOOLBAR_HEIGHT = 76; // titlebar(36) + navbar(40)
 const AI_PANEL_WIDTH = 380;
 let isAiPanelOpen = false;
 
-// Enable Chrome DevTools Protocol (CDP) on Port 9222 for Live Agent Automation
-app.commandLine.appendSwitch('remote-debugging-port', '9222');
-app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+if (app && app.commandLine) {
+    app.commandLine.appendSwitch('remote-debugging-port', '9222');
+    app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+}
 
 const http = require('http');
 
-// ── Embedded Automation HTTP API (Port 9223) ────────────────────────
+// ── Embedded Automation HTTP API + WebSocket (Port 9223) ──────────────
 function startAutomationServer() {
     const server = http.createServer(async (req, res) => {
         // Set CORS headers for local tools
@@ -144,6 +171,305 @@ function startAutomationServer() {
             }
         }
 
+        // GET /api/distilled-dom — Extract indexed interactive DOM elements
+        if (req.method === 'GET' && url.pathname === '/api/distilled-dom') {
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            if (!activeTab || !activeTab.view) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ elements: [], summary: 'No active tab' }));
+            }
+            try {
+                const distilledData = await activeTab.view.webContents.executeJavaScript(domDistiller.DOM_DISTILL_SCRIPT);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify(distilledData || { elements: [], summary: 'No data' }, null, 2));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ error: err.message }));
+            }
+        }
+
+        // GET/POST /api/user-memory — Manage static long-term memory (LTM)
+        if (url.pathname === '/api/user-memory') {
+            if (req.method === 'GET') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({
+                    profile: userMemory.getProfile(),
+                    preferences: userMemory.getPreferences(),
+                    summary: userMemory.getMemorySummary()
+                }, null, 2));
+            } else if (req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        if (data.profile) userMemory.updateProfile(data.profile);
+                        if (data.preferences) {
+                            Object.entries(data.preferences).forEach(([k, v]) => userMemory.setPreference(k, v));
+                        }
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ success: true, profile: userMemory.getProfile() }));
+                    } catch (e) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+        }
+
+        // GET /api/planner-state — Retrieve hierarchical planner progress
+        if (req.method === 'GET' && url.pathname === '/api/planner-state') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(plannerAgent.getPlanState(), null, 2));
+        }
+
+        // GET /api/loop-detector — Retrieve loop detector history
+        if (req.method === 'GET' && url.pathname === '/api/loop-detector') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                status: loopDetector.detectLoop(),
+                history: loopDetector.getHistory()
+            }, null, 2));
+        }
+
+        // ── Scheduled Tasks Endpoints ──────────────────────────────────
+        if (url.pathname === '/api/schedules') {
+            if (req.method === 'GET') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({
+                    schedules: scheduler ? scheduler.listSchedules() : [],
+                    results: scheduler ? scheduler.getAllResults() : {}
+                }, null, 2));
+            }
+            if (req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        if (!data.prompt) { res.writeHead(400); return res.end(JSON.stringify({ error: 'Missing prompt' })); }
+                        if (!scheduler) { res.writeHead(503); return res.end(JSON.stringify({ error: 'Scheduler not ready' })); }
+                        const entry = scheduler.addSchedule(data);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ success: true, schedule: entry }));
+                    } catch (e) {
+                        res.writeHead(400); return res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (req.method === 'DELETE') {
+                const id = url.searchParams.get('id');
+                if (id && scheduler) { scheduler.removeSchedule(id); }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ success: true }));
+            }
+        }
+
+        // POST /api/schedules/run — Run a scheduled task immediately
+        if (req.method === 'POST' && url.pathname === '/api/schedules/run') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+                try {
+                    const { id } = JSON.parse(body);
+                    if (scheduler && id) await scheduler.runNow(id);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    res.writeHead(400); return res.end(JSON.stringify({ error: e.message }));
+                }
+            });
+            return;
+        }
+
+        // ── BYOLLM Config Endpoints ────────────────────────────────────
+        if (url.pathname === '/api/llm-config') {
+            if (req.method === 'GET') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ config: apiEngine.getConfig(), usingLocalModel: true }, null, 2));
+            }
+            if (req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const data = JSON.parse(body);
+                        const saved = apiEngine.saveConfig(data);
+                        const ok = await apiEngine.initialize();
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ success: true, connected: ok, config: apiEngine.getConfig() }));
+                    } catch (e) {
+                        res.writeHead(400); return res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+        }
+
+        // ── Cowork Filesystem Endpoints ────────────────────────────────
+        if (url.pathname === '/api/cowork') {
+            if (req.method === 'GET') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ active: cowork.isActive(), folder: cowork.getFolder(), summary: cowork.getSummary() }, null, 2));
+            }
+            if (req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        if (data.folder) {
+                            cowork.setFolder(data.folder);
+                            userMemory.updateProfile({ coworkFolder: data.folder });
+                        } else if (data.clear) {
+                            cowork.clearFolder();
+                        }
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ success: true, folder: cowork.getFolder() }));
+                    } catch (e) {
+                        res.writeHead(400); return res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/cowork/read') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+                try {
+                    const { path: p } = JSON.parse(body);
+                    const content = cowork.readFile(p);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ success: true, content }));
+                } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+            });
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/cowork/write') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+                try {
+                    const { path: p, content } = JSON.parse(body);
+                    cowork.writeFile(p, content);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ success: true }));
+                } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+            });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/cowork/list') {
+            try {
+                const dirPath = url.searchParams.get('path') || '.';
+                const entries = cowork.listDir(dirPath);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ entries }, null, 2));
+            } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+        }
+
+        // ── Velocity: Snapshot Endpoints ───────────────────────────────
+        if (url.pathname === '/api/snapshots') {
+            if (req.method === 'GET') {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ snapshots: snapshots.list() }, null, 2));
+            }
+            if (req.method === 'POST') {
+                let body = '';
+                req.on('data', c => body += c);
+                req.on('end', () => {
+                    try {
+                        const { name } = JSON.parse(body || '{}');
+                        const meta = snapshots.save(name || 'API Snapshot', {
+                            tabs, activeTabId,
+                            chatHistory: chatContextHistory,
+                            plannerSteps: plannerAgent.getSteps ? plannerAgent.getSteps() : [],
+                            loopHistory: loopDetector.getHistory()
+                        });
+                        bus.broadcast('snapshot:saved', meta);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ success: true, snapshot: meta }));
+                    } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+                });
+                return;
+            }
+            if (req.method === 'DELETE') {
+                const id = url.searchParams.get('id');
+                if (id) snapshots.delete(id); else snapshots.clearAll();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ success: true }));
+            }
+        }
+
+        // GET /api/snapshots/latest — Return the most recent snapshot state
+        if (req.method === 'GET' && url.pathname === '/api/snapshots/latest') {
+            const latest = snapshots.latest();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ snapshot: latest }, null, 2));
+        }
+
+        // ── Velocity: Swarm Endpoints ──────────────────────────────────
+        if (req.method === 'GET' && url.pathname === '/api/swarms') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ swarms: swarm.listSwarms() }, null, 2));
+        }
+
+        if (req.method === 'GET' && url.pathname.startsWith('/api/swarms/')) {
+            const id = url.pathname.split('/').pop();
+            const s = swarm.getSwarm(id);
+            res.writeHead(s ? 200 : 404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ swarm: s || null }, null, 2));
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/swarms') {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', async () => {
+                try {
+                    const spec = JSON.parse(body);
+                    if (!spec.tasks || !Array.isArray(spec.tasks)) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ error: 'tasks[] array required' }));
+                    }
+                    // Start swarm asynchronously and return swarm ID immediately
+                    res.writeHead(202, { 'Content-Type': 'application/json' });
+                    const swarmId = `swarm_${Date.now()}`;
+                    res.end(JSON.stringify({ accepted: true, swarmId }));
+                    // Fire and forget — results broadcast via WS
+                    swarm.run(spec, { bus, lockManager, aiEngine, taskModule: tasks }).catch(e => {
+                        console.error('[Swarm HTTP] Error:', e.message);
+                    });
+                } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+            });
+            return;
+        }
+
+        // ── Velocity: Lock Manager Endpoints ──────────────────────────
+        if (req.method === 'GET' && url.pathname === '/api/locks') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ locks: lockManager.getAllLocks() }, null, 2));
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/locks/release-all') {
+            lockManager.releaseAll();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, message: 'All locks force-released' }));
+        }
+
+        // ── Velocity: WebSocket Event Log ─────────────────────────────
+        if (req.method === 'GET' && url.pathname === '/api/ws-log') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                clients: bus.connectionCount,
+                log: bus.getLog()
+            }, null, 2));
+        }
+
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Endpoint not found' }));
     });
@@ -151,6 +477,28 @@ function startAutomationServer() {
     server.listen(9223, '127.0.0.1', () => {
         console.log('[LOVI Automation Bridge] Listening on http://127.0.0.1:9223');
         console.log('[LOVI Chrome DevTools Protocol] Available on http://127.0.0.1:9222');
+        // Upgrade HTTP server to also serve WebSocket connections
+        bus.attach(server);
+        bus.onCommand(async (msg) => {
+            if (msg.type === 'navigate' && msg.url) {
+                const tab = tabs.find(t => t.id === activeTabId);
+                if (tab) tab.view.webContents.loadURL(msg.url);
+                return { action: 'navigate', url: msg.url };
+            }
+            if (msg.prompt || msg.text) {
+                const promptText = msg.prompt || msg.text;
+                if (!isAiPanelOpen && mainWindow && !mainWindow.isDestroyed()) {
+                    isAiPanelOpen = true;
+                    mainWindow.webContents.send('toggle-ai-panel', true);
+                    resizeBrowserView();
+                }
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('ai-ask-test', promptText);
+                }
+                return { action: 'prompt', prompt: promptText };
+            }
+            return { action: 'unknown' };
+        });
     });
 }
 
@@ -161,6 +509,8 @@ app.whenReady().then(() => {
     // Initialize AI Engine
     const userDataPath = app.getPath('userData');
     aiEngine = new AIEngine(path.join(userDataPath, 'models'));
+    intentEngine = new AIEngine(path.join(userDataPath, 'models'), { repo: 'bartowski/Qwen2.5-0.5B-Instruct-GGUF', file: 'Qwen2.5-0.5B-Instruct-Q4_K_M.gguf' });
+    intentEngine.init().catch(e => console.error('[IntentRouter] Init failed:', e.message));
 
     aiEngine.onStatusChange((statusData) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -172,10 +522,94 @@ app.whenReady().then(() => {
 
     mainWindow.webContents.on('did-finish-load', () => {
         createTab(HOME_URL);
+
+        // ── Initialize Scheduler (needs AI engine) ─────────────────────
+        scheduler = new Scheduler(async (prompt, taskId) => {
+            console.log(`[Scheduler] Running task ${taskId}: "${prompt.slice(0, 60)}..."`);
+            const msgs = tasks.getChatMessages(prompt, [], '');
+            let result = '';
+            await aiEngine.generateStream(msgs, (token) => { result += token; });
+            return result;
+        });
+        scheduler.startAll();
+
         if (process.argv.includes('--test-live')) {
             runLiveGuiTest();
         }
     });
+});
+
+// ── BrowserOS IPC: Cowork Filesystem ─────────────────
+ipcMain.handle('cowork-set-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'Select Cowork Folder for LOVI Agent'
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+        const folder = cowork.setFolder(result.filePaths[0]);
+        userMemory.updateProfile({ coworkFolder: folder });
+        return { success: true, folder };
+    }
+    return { success: false };
+});
+
+ipcMain.handle('cowork-clear', async () => {
+    cowork.clearFolder();
+    return { success: true };
+});
+
+ipcMain.handle('cowork-read-file', async (event, filePath) => {
+    try { return { success: true, content: cowork.readFile(filePath) }; }
+    catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('cowork-write-file', async (event, filePath, content) => {
+    try { cowork.writeFile(filePath, content); return { success: true }; }
+    catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('cowork-list-dir', async (event, dirPath = '.') => {
+    try { return { success: true, entries: cowork.listDir(dirPath) }; }
+    catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('cowork-status', async () => {
+    return { active: cowork.isActive(), folder: cowork.getFolder(), summary: cowork.getSummary() };
+});
+
+// ── BrowserOS IPC: Scheduled Tasks ───────────────────
+ipcMain.handle('schedule-add', async (event, data) => {
+    if (!scheduler) return { success: false, error: 'Scheduler not ready' };
+    const entry = scheduler.addSchedule(data);
+    return { success: true, schedule: entry };
+});
+
+ipcMain.handle('schedule-list', async () => {
+    if (!scheduler) return { schedules: [], results: {} };
+    return { schedules: scheduler.listSchedules(), results: scheduler.getAllResults() };
+});
+
+ipcMain.handle('schedule-remove', async (event, id) => {
+    if (scheduler) scheduler.removeSchedule(id);
+    return { success: true };
+});
+
+ipcMain.handle('schedule-run-now', async (event, id) => {
+    if (scheduler && id) await scheduler.runNow(id);
+    return { success: true };
+});
+
+// ── BrowserOS IPC: BYOLLM Config ──────────────────────
+ipcMain.handle('llm-get-config', async () => {
+    return { config: apiEngine.getConfig() };
+});
+
+ipcMain.handle('llm-set-config', async (event, newConfig) => {
+    const saved = apiEngine.saveConfig(newConfig);
+    const ok = await apiEngine.initialize((p) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-status', p.message);
+    });
+    return { success: ok, config: apiEngine.getConfig() };
 });
 
 let testStepCount = 0;
@@ -376,6 +810,7 @@ function createTab(url = HOME_URL) {
         sendTabsToRenderer();
         if (tab.id === activeTabId) {
             mainWindow.webContents.send('navigated', { url: navUrl });
+            bus.broadcast('navigate', { tabId: tab.id, url: navUrl });
         }
     });
 
@@ -400,20 +835,24 @@ function createTab(url = HOME_URL) {
         tab.url = navUrl;
         if (tab.id === activeTabId) {
             mainWindow.webContents.send('navigated', { url: navUrl });
+            bus.broadcast('navigate:inpage', { tabId: tab.id, url: navUrl });
         }
     });
 
     view.webContents.on('page-title-updated', (_e, title) => {
         tab.title = title;
         sendTabsToRenderer();
+        bus.broadcast('tab:title', { tabId: tab.id, title });
     });
 
     view.webContents.on('did-start-loading', () => {
         mainWindow.webContents.send('loading-state-changed', { loading: true });
+        bus.broadcast('tab:loading', { tabId: tab.id, loading: true });
     });
 
     view.webContents.on('did-finish-load', () => {
         mainWindow.webContents.send('loading-state-changed', { loading: false });
+        bus.broadcast('tab:loading', { tabId: tab.id, loading: false, url: view.webContents.getURL() });
         const currentUrl = view.webContents.getURL();
         if (currentUrl.includes('youtube.com/results?search_query=')) {
             view.webContents.executeJavaScript(`
@@ -482,6 +921,7 @@ function closeTab(id) {
     }
 
     sendTabsToRenderer();
+    bus.broadcast('tab:closed', { closedTabId: id, tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })) });
 }
 
 function switchToTab(id) {
@@ -501,7 +941,7 @@ function switchToTab(id) {
         resizeBrowserView();
     }
     sendTabsToRenderer();
-
+    bus.broadcast('tab:switched', { activeTabId: id, url: tab.url || '' });
     mainWindow.webContents.send('navigated', { url: tab.url || '' });
 }
 
@@ -654,18 +1094,23 @@ ipcMain.on('ai-init', async () => {
 
 async function runAiGeneration(messages) {
     try {
+        let fullText = '';
         await aiEngine.generate(messages, (chunk) => {
+            fullText += chunk;
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('ai-chunk', chunk);
             }
+            bus.broadcast('ai:chunk', { chunk });
         });
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('ai-done');
         }
+        bus.broadcast('ai:done', { text: fullText });
     } catch (err) {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('ai-error', err.message);
         }
+        bus.broadcast('ai:error', { error: err.message });
     }
 }
 
@@ -706,44 +1151,81 @@ function getDynamicSearchUrl(query, isWikipedia = false) {
 ipcMain.on('ai-ask', async (_e, question) => {
     if (!question || !question.trim()) return;
 
-    // Fast heuristic to catch explicit intent commands from anywhere in the user query
-    const isIntentCommand = /\b(play|queue|open|go to|take me|take me to|search for|watch|navigate|navigate to|new tab|close tab|switch tab)\b/i.test(question.trim());
-
-    // Prompt engineering trick for 1.5B models: Remind them to output tool on consent
-    let effectiveQuestion = question;
-    if (/^(yes|yeah|yep|sure|proceed|do it|ok|okay|please)\b/i.test(question.trim())) {
-        effectiveQuestion += '\n\n*(System Reminder: If you previously asked for permission to navigate or play media, output the exact tool tag now!)*';
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ai-status', `Routing intent...`);
     }
 
-    // Fall back to chat (with memory)
-    const page = await getActivePageContent();
-    const tabsSummary = getOpenTabsSummary();
+    // ── FAST AI INTENT ROUTING (Replaces Regex) ──
+    let isRoutedToNavigation = false;
+    let aiFullResponse = '';
 
-    // Build context with history (Only pass page text context if NOT an explicit navigation/playback intent command)
-    const baseMessages = (page.text && !isIntentCommand)
-        ? tasks.getAskPageMessages(page.text, effectiveQuestion, page.title, tabsSummary)
-        : tasks.getComposeMessages(effectiveQuestion, '', tabsSummary);
-
-    // Insert history between system prompt and current user question
-    const systemPrompt = baseMessages[0];
-    const currentUserReq = baseMessages[1];
-
-    const messages = [
-        systemPrompt,
-        ...chatContextHistory,
-        currentUserReq
-    ];
-
-    // Temporarily save user question
-    chatContextHistory.push({ role: 'user', content: question });
+    if (intentEngine && intentEngine.status === 'ready') {
+        try {
+            let intentRouterResult = '';
+            await intentEngine.generate(tasks.getIntentMessages(question), (chunk) => {
+                intentRouterResult += chunk;
+            });
+            const match = intentRouterResult.match(/\{[\s\S]*?\}/);
+            if (match) {
+                const intent = JSON.parse(match[0]);
+                if (intent.type === 'navigate' || intent.type === 'search' || intent.type === 'play') {
+                    if (intent.query && intent.query.length > 3) {
+                        let url = intent.query.startsWith('http') ? intent.query : `https://${intent.query}`;
+                        const isNewTabReq = /\b(?:open a new tab|new tab|open new tab)\b/i.test(question);
+                        if (intent.type === 'play') url = `https://www.youtube.com/results?search_query=${encodeURIComponent(intent.query.replace('https://', ''))}`;
+                        
+                        aiFullResponse = `Navigating to ${url}...\n\n`;
+                        if (isNewTabReq) aiFullResponse += `[NEW_TAB url="${url}"]`;
+                        else aiFullResponse += `[NAVIGATE url="${url}"]`;
+                        
+                        isRoutedToNavigation = true;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[IntentRouter] AI Parsing failed, falling back:', e.message);
+        }
+    }
 
     try {
-        let aiFullResponse = await aiEngine.generate(messages, (chunk) => {
-            process.stdout.write(chunk); // Debug log exactly what it generates
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('ai-chunk', chunk);
+        if (!isRoutedToNavigation) {
+            // Prompt engineering trick for 1.5B models: Remind them to output tool on consent
+            let effectiveQuestion = question;
+            if (/^(yes|yeah|yep|sure|proceed|do it|ok|okay|please)\b/i.test(question.trim())) {
+                effectiveQuestion += '\n\n*(System Reminder: If you previously asked for permission to navigate or play media, output the exact tool tag now!)*';
             }
-        });
+
+            // Fall back to chat (with memory)
+            const page = await getActivePageContent();
+            const tabsSummary = getOpenTabsSummary();
+
+            // Build context with history
+            const baseMessages = (page.text)
+                ? tasks.getAskPageMessages(page.text, effectiveQuestion, page.title, tabsSummary)
+                : tasks.getComposeMessages(effectiveQuestion, '', tabsSummary);
+
+            const systemPrompt = baseMessages[0];
+            const currentUserReq = baseMessages[1];
+
+            const messages = [
+                systemPrompt,
+                ...chatContextHistory,
+                currentUserReq
+            ];
+
+            // Temporarily save user question
+            chatContextHistory.push({ role: 'user', content: question });
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ai-status', `Generating response...`);
+            }
+            aiFullResponse = await aiEngine.generate(messages, (chunk) => {
+                process.stdout.write(chunk); // Debug log exactly what it generates
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('ai-chunk', chunk);
+                }
+            });
+        }
 
         // Anti-refusal override for action commands
         if (/I'm sorry, but I can't assist with that/i.test(aiFullResponse)) {
@@ -771,8 +1253,18 @@ ipcMain.on('ai-ask', async (_e, question) => {
 
         // Direct tag enforcement if LLM omits macro for direct navigation requests
         if (!aiFullResponse.includes('[NAVIGATE') && !aiFullResponse.includes('[NEW_TAB') && !aiFullResponse.includes('[PLAY')) {
+            const playCheck = question.match(/\bplay\s+(.+)/i);
             const navCheck = question.match(/\b(?:take me to|open|go to|navigate to)\s+(.+)/i);
-            if (navCheck) {
+            
+            if (playCheck) {
+                const mediaName = playCheck[1].replace(/\b(and build|build a playlist|a playlist|and queue|a mix|so we can|on youtube|for me)\b.*/i, '').trim();
+                const isNewTabReq = /\b(?:open a new tab|new tab|open new tab)\b/i.test(question);
+                if (isNewTabReq) {
+                    aiFullResponse += `\n\n[NEW_TAB url="https://www.youtube.com/results?search_query=${encodeURIComponent(mediaName)}"]`;
+                } else {
+                    aiFullResponse += `\n\n[PLAY media="${mediaName}"]`;
+                }
+            } else if (navCheck) {
                 let topicMatch = question.match(/(?:wikipedia|wiki).*(?:to read about|about|search for|for)\s+(.+)/i);
                 let topicName = topicMatch ? topicMatch[1].trim() : navCheck[1].trim();
                 let isWiki = question.toLowerCase().includes('wikipedia') || question.toLowerCase().includes('wiki');
@@ -805,10 +1297,70 @@ ipcMain.on('ai-ask', async (_e, question) => {
             didNavigate = true;
         }
 
+        // ── Agent-E Macro Execution & Loop Detector Tracking ──
+        const activeTabForAction = tabs.find(t => t.id === activeTabId);
+        const currentTabUrl = activeTabForAction ? activeTabForAction.url : '';
+
+        // 1. [CLICK id="N"]
+        const clickMacro = aiFullResponse.match(/\[CLICK id="(\d+)"\]/);
+        if (clickMacro && activeTabForAction && activeTabForAction.view) {
+            const elId = clickMacro[1];
+            loopDetector.recordAction({ action: 'click', target: `id=${elId}`, url: currentTabUrl });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ai-status', `Clicking element [id=${elId}]...`);
+            }
+            activeTabForAction.view.webContents.executeJavaScript(domDistiller.CLICK_ELEMENT_SCRIPT(elId)).catch(() => {});
+        }
+
+        // 2. [TYPE id="N" text="..."]
+        const typeMacro = aiFullResponse.match(/\[TYPE id="(\d+)" text="([^"]+)"\]/);
+        if (typeMacro && activeTabForAction && activeTabForAction.view) {
+            const elId = typeMacro[1];
+            const typeText = typeMacro[2];
+            loopDetector.recordAction({ action: 'type', target: `id=${elId}:${typeText}`, url: currentTabUrl });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ai-status', `Typing into [id=${elId}]...`);
+            }
+            activeTabForAction.view.webContents.executeJavaScript(domDistiller.TYPE_ELEMENT_SCRIPT(elId, typeText)).catch(() => {});
+        }
+
+        // 3. [AUTOFILL_FORM]
+        if (aiFullResponse.includes('[AUTOFILL_FORM]') && activeTabForAction && activeTabForAction.view) {
+            loopDetector.recordAction({ action: 'autofill', target: 'form', url: currentTabUrl });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ai-status', `Auto-filling form from memory...`);
+            }
+            const profile = userMemory.getProfile();
+            activeTabForAction.view.webContents.executeJavaScript(`
+                (function() {
+                    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]), select, textarea'));
+                    inputs.forEach(el => {
+                        const name = (el.name || el.id || el.placeholder || '').toLowerCase();
+                        if (name.includes('first') || name.includes('fname')) el.value = ${JSON.stringify(profile.firstName)};
+                        else if (name.includes('last') || name.includes('lname')) el.value = ${JSON.stringify(profile.lastName)};
+                        else if (name.includes('name')) el.value = ${JSON.stringify(profile.fullName)};
+                        else if (name.includes('email')) el.value = ${JSON.stringify(profile.email)};
+                        else if (name.includes('phone') || name.includes('tel')) el.value = ${JSON.stringify(profile.phone)};
+                        else if (name.includes('city')) el.value = ${JSON.stringify(profile.city)};
+                        else if (name.includes('zip') || name.includes('postal')) el.value = ${JSON.stringify(profile.zipCode)};
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                })()
+            `).catch(() => {});
+        }
+
+        // 4. [PLAN_STEP step="..."]
+        const planMacro = aiFullResponse.match(/\[PLAN_STEP step="([^"]+)"\]/);
+        if (planMacro) {
+            plannerAgent.completeCurrentStep(planMacro[1]);
+        }
+
         const navMacro = aiFullResponse.match(/\[NAVIGATE url="([^"]+)"\]/);
         if (!failSafeTriggered && navMacro) {
             let targetUrl = navMacro[1];
             if (!targetUrl.startsWith('http')) targetUrl = `https://${targetUrl}`;
+            loopDetector.recordAction({ action: 'navigate', target: targetUrl, url: currentTabUrl });
             const activeTab = tabs.find(t => t.id === activeTabId);
             if (activeTab && activeTab.view) {
                 didNavigate = true;

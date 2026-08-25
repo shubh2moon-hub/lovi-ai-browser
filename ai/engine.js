@@ -1,15 +1,13 @@
 const path = require('path');
 const fs = require('fs');
 
-// Model configuration
-const MODEL_HF_REPO = 'bartowski/Qwen2.5-1.5B-Instruct-GGUF';
-const MODEL_FILE_NAME = 'Qwen2.5-1.5B-Instruct-Q4_K_M.gguf';
-const MODEL_URL = `https://huggingface.co/${MODEL_HF_REPO}/resolve/main/${MODEL_FILE_NAME}`;
-
 class AIEngine {
-    constructor(modelsDir) {
+    constructor(modelsDir, config = {}) {
         this.modelsDir = modelsDir || path.join(__dirname, '..', 'models');
-        this.modelPath = path.join(this.modelsDir, MODEL_FILE_NAME);
+        this.modelRepo = config.repo || 'bartowski/Qwen2.5-1.5B-Instruct-GGUF';
+        this.modelFile = config.file || 'Qwen2.5-1.5B-Instruct-Q4_K_M.gguf';
+        this.modelUrl = `https://huggingface.co/${this.modelRepo}/resolve/main/${this.modelFile}`;
+        this.modelPath = path.join(this.modelsDir, this.modelFile);
 
         this.llama = null;
         this.model = null;
@@ -54,9 +52,9 @@ class AIEngine {
         try {
             const { createModelDownloader } = await import('node-llama-cpp');
             const downloader = await createModelDownloader({
-                modelUri: MODEL_URL,
+                modelUri: this.modelUrl,
                 dirPath: this.modelsDir,
-                fileName: MODEL_FILE_NAME,
+                fileName: this.modelFile,
                 showCliProgress: false,
                 onProgress: (status) => {
                     const percent = status.totalSize > 0 

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "sched_1787637010908",
+    "name": "Morning News Check",
+    "prompt": "Go to news.ycombinator.com and summarize top stories",
+    "type": "daily",
+    "interval": 60,
+    "enabled": true,
+    "createdAt": "2026-08-25T05:50:10.908Z",
+    "lastRun": null,
+    "nextRun": "2026-08-26T02:30:00.000Z"
+  },
+  {
+    "id": "sched_1787637059382",
+    "name": "Morning News Check",
+    "prompt": "Go to news.ycombinator.com and summarize top stories",
+    "type": "daily",
+    "interval": 60,
+    "enabled": true,
+    "createdAt": "2026-08-25T05:50:59.382Z",
+    "lastRun": null,
+    "nextRun": "2026-08-26T02:30:00.000Z"
+  },
+  {
+    "id": "sched_1787637105776",
+    "name": "Morning News Check",
+    "prompt": "Go to news.ycombinator.com and summarize top stories",
+    "type": "daily",
+    "interval": 60,
+    "enabled": true,
+    "createdAt": "2026-08-25T05:51:45.776Z",
+    "lastRun": null,
+    "nextRun": "2026-08-26T02:30:00.000Z"
+  }
+]

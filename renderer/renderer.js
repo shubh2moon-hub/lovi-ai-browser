@@ -26,6 +26,8 @@ const btnBack = document.getElementById('btn-back');
 const btnForward = document.getElementById('btn-forward');
 const btnReload = document.getElementById('btn-reload');
 const loadingIndicator = document.getElementById('loading-indicator');
+const btnMenu = document.getElementById('btn-menu');
+const browserMenu = document.getElementById('browser-menu');
 
 // ── Home Page References ─────────────────────────────
 const homePage = document.getElementById('home-page');
@@ -169,6 +171,45 @@ btnForward.addEventListener('click', () => api.goForward());
 btnReload.addEventListener('click', () => api.reload());
 btnNewTab.addEventListener('click', () => api.newTab());
 document.getElementById('btn-open-pdf').addEventListener('click', () => api.openPdf());
+
+// ── Browser Menu ─────────────────────────────────────
+btnMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    browserMenu.classList.toggle('hidden');
+});
+
+document.addEventListener('click', (e) => {
+    if (!browserMenu.contains(e.target) && !btnMenu.contains(e.target)) {
+        browserMenu.classList.add('hidden');
+    }
+});
+
+const closeMenu = () => browserMenu.classList.add('hidden');
+
+document.getElementById('menu-new-tab').addEventListener('click', () => {
+    api.newTab();
+    closeMenu();
+});
+
+document.getElementById('menu-new-window').addEventListener('click', () => {
+    closeMenu();
+});
+
+document.getElementById('menu-history').addEventListener('click', () => {
+    // Basic interaction for history (can be expanded later)
+    api.navigate('chrome://history'); // Example placeholder
+    closeMenu();
+});
+
+document.getElementById('menu-downloads').addEventListener('click', () => {
+    api.navigate('chrome://downloads');
+    closeMenu();
+});
+
+document.getElementById('menu-settings').addEventListener('click', () => {
+    api.navigate('chrome://settings');
+    closeMenu();
+});
 
 // ── IPC Listeners ────────────────────────────────────
 

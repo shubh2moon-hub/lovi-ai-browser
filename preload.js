@@ -49,4 +49,22 @@ contextBridge.exposeInMainWorld('browser', {
   onAiAskTest: (cb) => ipcRenderer.on('ai-ask-test', (_e, text) => cb(text)),
   onToggleAiPanel: (cb) => ipcRenderer.on('toggle-ai-panel', (_e, open) => cb(open)),
   notifyTestStepDone: (stepName) => ipcRenderer.send('test-step-done', stepName),
+
+  // ── Cowork Filesystem ───────────────────────────────
+  coworkSetFolder: () => ipcRenderer.invoke('cowork-set-folder'),
+  coworkClear: () => ipcRenderer.invoke('cowork-clear'),
+  coworkReadFile: (filePath) => ipcRenderer.invoke('cowork-read-file', filePath),
+  coworkWriteFile: (filePath, content) => ipcRenderer.invoke('cowork-write-file', filePath, content),
+  coworkListDir: (dirPath) => ipcRenderer.invoke('cowork-list-dir', dirPath),
+  coworkStatus: () => ipcRenderer.invoke('cowork-status'),
+
+  // ── Scheduled Tasks ─────────────────────────────────
+  scheduleAdd: (data) => ipcRenderer.invoke('schedule-add', data),
+  scheduleList: () => ipcRenderer.invoke('schedule-list'),
+  scheduleRemove: (id) => ipcRenderer.invoke('schedule-remove', id),
+  scheduleRunNow: (id) => ipcRenderer.invoke('schedule-run-now', id),
+
+  // ── Bring Your Own LLM ──────────────────────────────
+  llmGetConfig: () => ipcRenderer.invoke('llm-get-config'),
+  llmSetConfig: (config) => ipcRenderer.invoke('llm-set-config', config),
 });

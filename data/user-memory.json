@@ -1,0 +1,21 @@
+{
+  "profile": {
+    "fullName": "Shubh",
+    "firstName": "Shubh",
+    "lastName": "User",
+    "email": "shubh@example.com",
+    "phone": "+1-555-0199",
+    "address": "123 Tech Lane",
+    "city": "San Francisco",
+    "state": "CA",
+    "zipCode": "94105",
+    "country": "USA"
+  },
+  "preferences": {
+    "searchEngine": "DuckDuckGo",
+    "favoriteGenre": "Sci-Fi / Nolan",
+    "ticketClass": "Business",
+    "autoFillConsent": true
+  },
+  "customNotes": {}
+}
